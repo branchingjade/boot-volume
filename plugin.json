@@ -1,0 +1,11 @@
+{
+  "name": "BootVolume",
+  "author": "roses",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["audio", "utility", "startup"],
+    "description": "Temporarily lower the system volume while the SteamOS boot animation plays, then restore it.",
+    "image": "https://raw.githubusercontent.com/genc-v/boot-volume/main/assets/thumbnail.png"
+  }
+}
