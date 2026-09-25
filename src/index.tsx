@@ -13,6 +13,7 @@ type Settings = {
   enabled: boolean;
   anim_volume: number;
   current_volume: number | null;
+  current_sink: string | null;
   sinks: Record<string, number>;
   auto_seconds: number;
 };
@@ -21,6 +22,7 @@ function BootVolumePanel() {
   const [enabled, setEnabled] = useState(true);
   const [animVolume, setAnimVolume] = useState(20);
   const [currentVolume, setCurrentVolume] = useState<number | null>(null);
+  const [currentSink, setCurrentSink] = useState<string | null>(null);
   const [autoSeconds, setAutoSeconds] = useState(6);
   const [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +35,7 @@ function BootVolumePanel() {
         setEnabled(s.enabled);
         setAnimVolume(s.anim_volume);
         setCurrentVolume(s.current_volume);
+        setCurrentSink(s.current_sink ?? null);
         setAutoSeconds(s.auto_seconds ?? 6);
       })
       .catch((e) => setError(String(e)));
@@ -70,9 +73,9 @@ function BootVolumePanel() {
       <PanelSectionRow>
         <SliderField
           label={`Volume during the animation: ${animVolume}%`}
-          description={`Current output ${
+          description={`Current output: ${currentSink ?? "unknown"} — ${
             currentVolume == null ? "?" : currentVolume + "%"
-          } — it is set to the value above while the animation plays, then restored.`}
+          }. It is set to the value above while the animation plays, then restored.`}
           value={animVolume}
           min={0}
           max={100}

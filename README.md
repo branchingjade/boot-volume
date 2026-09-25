@@ -68,6 +68,9 @@ The plugin folder that Decky loads needs `plugin.json`, `main.py` and `dist/`.
   with a leading `*`, which the sink parser did not accept, so the plugin skipped exactly the output
   the animation plays on (and the preview button did nothing audible). The parser now handles the
   marker, so HDMI / TV and any other default output is ducked too.
+- **Fix: the panel reported the wrong "current output".** It used to show the first non-HDMI sink,
+  which is not necessarily the one you are listening on. It now shows the actual default output and
+  its volume (with the device name).
 - **Fix: community startup movies were not measured.** Only the built-in `steamui/movies` files were
   probed, so a Points Shop movie longer than the built-in ones (e.g. a 10 s movie against a 9.55 s
   window) had its ending play at full volume. The community cache and `uioverrides` directories are

@@ -144,7 +144,7 @@ async def _wpctl(*args):
 
 
 async def list_hw_sinks():
-    """Return [(id, description)] for real hardware sinks (not loopback)."""
+    """Return [(id, name, is_default)] for real hardware sinks (not loopback)."""
     out = await _wpctl("status", "-n")
     sinks = []
     in_audio = False
@@ -168,6 +168,7 @@ async def list_hw_sinks():
             continue
         if not in_sinks:
             continue
+        is_default = line.startswith("*")
         m = re.match(r"\*?\s*(\d+)\.\s+(\S+)", line)
         if not m:
             continue
@@ -175,7 +176,7 @@ async def list_hw_sinks():
         name = m.group(2)
         if "loopback" in name.lower() or "filter" in name.lower():
             continue
-        sinks.append((sink_id, name))
+        sinks.append((sink_id, name, is_default))
     return sinks
 
 
@@ -200,22 +201,38 @@ async def set_hw_volume(sink_id, volume):
 
 async def get_all_hw_volumes():
     result = {}
-    for sink_id, desc in await list_hw_sinks():
+    for sink_id, desc, is_default in await list_hw_sinks():
         try:
             result[str(sink_id)] = {
                 "desc": desc,
                 "volume": await get_hw_volume(sink_id),
+                "default": is_default,
             }
         except Exception as e:
             decky.logger.error(f"get hw volume {sink_id}: {e}")
     return result
 
 
+async def get_sink_label(sink_id, fallback):
+    """Human readable name of a sink (node.description), fallback to its node name."""
+    try:
+        out = await _wpctl("inspect", str(sink_id))
+    except Exception:
+        return fallback
+    m = re.search(r'node\.description\s*=\s*"([^"]+)"', out)
+    if m:
+        return m.group(1)
+    m = re.search(r'node\.nick\s*=\s*"([^"]+)"', out)
+    if m:
+        return m.group(1)
+    return fallback
+
+
 async def set_all_hw_volumes(volume):
     sinks = await list_hw_sinks()
-    for sink_id, _ in sinks:
+    for sink_id, _name, _default in sinks:
         await set_hw_volume(sink_id, volume)
-    return [str(i) for i, _ in sinks]
+    return [str(s[0]) for s in sinks]
 
 
 class Plugin:
@@ -232,17 +249,37 @@ class Plugin:
             decky.logger.error(f"get volumes failed: {e}")
 
         current = None
-        for info in volumes.values():
-            if "hdmi" not in info["desc"].lower():
+        default_id = None
+        default_desc = None
+        for sid, info in volumes.items():
+            if info.get("default"):
                 current = info["volume"]
+                default_id = sid
+                default_desc = info["desc"]
                 break
+        if current is None:
+            # no sink marked as default yet: fall back to the previous heuristic
+            for sid, info in volumes.items():
+                if "hdmi" not in info["desc"].lower():
+                    current = info["volume"]
+                    default_id = sid
+                    default_desc = info["desc"]
+                    break
         if current is None and volumes:
-            current = next(iter(volumes.values()))["volume"]
+            sid, info = next(iter(volumes.items()))
+            current = info["volume"]
+            default_id = sid
+            default_desc = info["desc"]
+
+        label = default_desc
+        if default_id is not None:
+            label = await get_sink_label(int(default_id), default_desc)
 
         return {
             "enabled": settings.get("enabled", True),
             "anim_volume": settings.get("anim_volume", 20),
             "current_volume": current,
+            "current_sink": label,
             "sinks": {k: v["volume"] for k, v in volumes.items()},
             "auto_seconds": self._anim_duration,
         }

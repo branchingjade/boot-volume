@@ -86,6 +86,7 @@ function BootVolumePanel() {
     const [enabled, setEnabled] = SP_REACT.useState(true);
     const [animVolume, setAnimVolume] = SP_REACT.useState(20);
     const [currentVolume, setCurrentVolume] = SP_REACT.useState(null);
+    const [currentSink, setCurrentSink] = SP_REACT.useState(null);
     const [autoSeconds, setAutoSeconds] = SP_REACT.useState(6);
     const [previewing, setPreviewing] = SP_REACT.useState(false);
     const [error, setError] = SP_REACT.useState(null);
@@ -96,6 +97,7 @@ function BootVolumePanel() {
         setEnabled(s.enabled);
         setAnimVolume(s.anim_volume);
         setCurrentVolume(s.current_volume);
+        setCurrentSink(s.current_sink ?? null);
         setAutoSeconds(s.auto_seconds ?? 6);
     })
         .catch((e) => setError(String(e)));
@@ -118,7 +120,7 @@ function BootVolumePanel() {
     return (SP_JSX.jsxs(DFL.PanelSection, { title: "Boot animation volume", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ToggleField, { label: "Enable", description: "Lower the system volume while Steam starts, then put it back. No system files are touched.", checked: enabled, onChange: (val) => {
                         setEnabled(val);
                         call("set_enabled", val).catch((e) => setError(String(e)));
-                    } }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: `Volume during the animation: ${animVolume}%`, description: `Current output ${currentVolume == null ? "?" : currentVolume + "%"} — it is set to the value above while the animation plays, then restored.`, value: animVolume, min: 0, max: 100, step: 1, disabled: !enabled, onChange: onAnimVolume }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }, children: `Animation length measured from the startup movies on disk: ${autoSeconds.toFixed(1)}s (includes a safety margin).` }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: !enabled || previewing, onClick: () => {
+                    } }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: `Volume during the animation: ${animVolume}%`, description: `Current output: ${currentSink ?? "unknown"} — ${currentVolume == null ? "?" : currentVolume + "%"}. It is set to the value above while the animation plays, then restored.`, value: animVolume, min: 0, max: 100, step: 1, disabled: !enabled, onChange: onAnimVolume }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }, children: `Animation length measured from the startup movies on disk: ${autoSeconds.toFixed(1)}s (includes a safety margin).` }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: !enabled || previewing, onClick: () => {
                         if (!enabled || previewing)
                             return;
                         setPreviewing(true);
