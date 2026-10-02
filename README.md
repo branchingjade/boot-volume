@@ -1,94 +1,108 @@
 # BootVolume
 
-A [Decky Loader](https://decky.xyz) plugin for SteamOS that **temporarily lowers the system volume
-while the Steam boot animation plays**, then restores the volume you had before.
+[English](README.en.md) · **简体中文**
 
-The SteamOS startup movie can be surprisingly loud — especially the community startup movies from
-the Points Shop. This plugin ducks every audio output for the length of the animation and puts the
-previous values back afterwards. It does not modify any Steam or system files.
+一个 [Decky Loader](https://decky.xyz) 插件：在 **SteamOS 开机动画播放期间自动压低系统音量**，
+动画结束后把音量恢复成你原来的设置。
 
-## Features
+SteamOS 的启动动画（尤其是创意工坊 / 点数商店里的社区启动动画）经常响得吓人。这个插件会在动画
+时长内把所有音频输出压低，然后把之前的音量原样放回去，**不修改任何 Steam 或系统文件**。
 
-- Ducks **all** audio outputs, including the current default output (HDMI / TV, USB DAC, headset, …)
-- Measures the animation length from the startup movies actually installed on the machine,
-  including community startup movies from the Points Shop (`config/communityitemscache/startupmovies`)
-- Triggers both on boot **and** when you use *Restart Steam* in the middle of a session
-- Restores exactly the volumes that were set before — and never overwrites a change you made yourself
-  during the duck window
-- QAM panel with an enable toggle, target volume slider and a preview button
-- No background services, no system file patching, nothing persistent besides a small settings file
+## 功能
 
-## How it works
+- 压低**所有**音频输出，包括当前默认输出（HDMI / 电视、USB DAC、耳机……）
+- 动画时长按机器上**实际安装**的启动动画实测（`steamui/movies`、社区动画缓存
+  `config/communityitemscache/startupmovies`、`config/uioverrides/movies`），取最长的一条
+- 开机时生效，**重启 Steam（Restart Steam）**时同样生效
+- **睡眠唤醒后第一次启动动画也生效**（靠实时钟/单调钟的差值检测 resume）
+- 恢复时精确还原动画前的音量；如果你在压低期间自己调过音量，那一路输出不会被覆盖
+- **中英双语面板**，默认中文，可在面板里切换（选择会被记住）
+- 侧边栏面板：开关、目标音量滑条、预览按钮
+- 无常驻后台服务、不改系统文件，除一个很小的设置文件外不留痕迹
 
-1. The backend enumerates the PipeWire sinks (`wpctl status`) and reads their volumes.
-2. On boot, and whenever the Steam UI process restarts, it sets every sink to the configured target
-   volume and holds it for the measured animation length + a safety margin.
-3. Afterwards each sink is restored to the volume it had before the duck. If you changed a volume
-   yourself in that window, that sink is left alone.
+## 界面语言
 
-The animation length is probed with `ffprobe` over the startup movies in
-`steamui/movies`, `config/communityitemscache/startupmovies` and `config/uioverrides/movies`.
-The longest movie found is used, so a shuffled community movie never gets cut off.
+面板底部的「语言 / Language」下拉框可选 **中文**（默认）与 **English**，选择保存在本地。
 
-## Settings
+## 工作原理
 
-| Setting | Default | Meaning |
+1. 后端枚举 PipeWire 的 sink（`wpctl status`）并读取各自音量。
+2. 开机时、以及 Steam UI 进程重启时，把所有 sink 设为设定音量，并保持「实测动画时长 + 安全余量」。
+3. 期间每秒检查一次新出现的 sink（例如唤醒后 USB / HDMI 设备重新枚举），发现就一起压低。
+4. 结束后把每个 sink 恢复为压低前的数值；若某一路中途被你手动改过，则保持你的选择不动。
+
+动画时长用 `ffprobe` 探测磁盘上的启动动画文件，取最长的一条加 4 秒余量，所以随机播放的社区动画
+也不会被截断。
+
+## 设置
+
+| 设置项 | 默认值 | 含义 |
 | --- | --- | --- |
-| Enable | on | Duck the volume while the animation plays |
-| Volume during the animation | 25% | Target volume for every output; `0` = effectively silent |
-| Animation length | auto | Read-only; measured from the movies on disk (longest + margin) |
+| 启用 | 开 | 动画播放时压低音量 |
+| 动画期间音量 | 20% | 所有输出的目标音量；`0` 即静音 |
+| 动画时长 | 自动 | 只读；由磁盘上的动画实测（最长的一条 + 余量） |
 
-## Install
+## 安装
 
-- **Plugin store**: once the plugin is listed, search for *BootVolume* in the Decky store.
-- **Manual**: download `BootVolume.zip` from the latest release and use *Developer → Install Plugin
-  from file* in the Decky settings, or unzip it into `~/homebrew/plugins/`.
+- **插件商店**：上架后可在 Decky 商店里搜索 *BootVolume*。
+- **手动安装**：从 [Releases](https://github.com/branchingjade/boot-volume/releases) 下载
+  `BootVolume.zip`，在 Decky 设置 → 通用 → **从文件安装插件** 中选择；或解压到 `~/homebrew/plugins/`。
 
-## Build from source
+## 从源码构建
 
 ```bash
 pnpm install
-pnpm run build      # produces dist/index.js
+pnpm run build      # 生成 dist/index.js
 ```
 
-The plugin folder that Decky loads needs `plugin.json`, `main.py` and `dist/`.
+Decky 实际加载的目录里需要 `plugin.json`、`main.py` 和 `dist/`。
 
-## Troubleshooting
+## 排错
 
-- **Nothing is ducked**: check `~/homebrew/logs/BootVolume/*.log`. The backend logs the sinks it
-  found, the measured animation length and the target volume for every duck.
-- **The tail of a very long custom movie is loud**: the length is measured from the files on disk;
-  if you sideload a movie somewhere unusual, the measurement falls back to the system movies.
+- **完全没压低**：看 `~/homebrew/logs/BootVolume/*.log`。后端会记录找到的 sink、实测动画时长和
+  每次压低的目标音量。
+- **很长的自定义动画结尾还是很响**：时长是按磁盘上的文件实测的；如果你把动画放在非常规位置，
+  会回退到系统自带动画的时长。
+- **改完 `main.py` 不生效**：Decky 不会热重载这个插件（日志里会写
+  `has requested to not be re-loaded`），需要在 Decky 面板里关一下再开，或者重启 Decky。
 
-## Changelog
+## 更新日志
+
+### 1.4.0
+
+- **新增：睡眠唤醒后的第一次启动动画也会被压低。** 之前插件只在 Decky 加载时、以及
+  `steamwebhelper` 的 pid 变化时触发，而唤醒后那次动画是同一个 Steam UI 进程在放（pid 不变），
+  所以插件根本没被触发，表现为「长时间睡眠后第一次开机动画不压音量，第二三次才正常」。
+  现在通过 `time.time() - time.monotonic()` 的差值跳变检测 resume，唤醒后立刻开压。
+- **新增：中英双语面板**（默认中文，可切换并记住），面板文案不再是单语。
+- **优化：不再在关键路径上跑 `ffprobe`。** 开压前不再扫描全部 17 个动画文件，直接用加载时测好的
+  时长，避免动画开头几秒漏压。
+- **修复：唤醒后新出现的 sink 压不到。** 压低期间每秒复查一次音频输出，新枚举出来的设备
+  （满音量）也会被一起压低，并在结束时正确还原。
+- **修复：音频图未就绪时直接放弃。** 现在会短暂重试，而不是报 `no hardware sinks found` 就退出。
 
 ### 1.3.0
 
-- **Fix: the default audio output was never ducked.** `wpctl status` marks the current default sink
-  with a leading `*`, which the sink parser did not accept, so the plugin skipped exactly the output
-  the animation plays on (and the preview button did nothing audible). The parser now handles the
-  marker, so HDMI / TV and any other default output is ducked too.
-- **Fix: the panel reported the wrong "current output".** It used to show the first non-HDMI sink,
-  which is not necessarily the one you are listening on. It now shows the actual default output and
-  its volume (with the device name).
-- **Fix: community startup movies were not measured.** Only the built-in `steamui/movies` files were
-  probed, so a Points Shop movie longer than the built-in ones (e.g. a 10 s movie against a 9.55 s
-  window) had its ending play at full volume. The community cache and `uioverrides` directories are
-  now scanned, and the safety margin was raised to 4 s.
-- **New: ducking on *Restart Steam*.** The duck used to be tied to Decky's own loader start, which
-  "Restart Steam" often does not trigger (or triggers 40 s too late). A small watcher now notices the
-  Steam UI process being replaced and ducks immediately.
+- **修复：默认音频输出从来没被压低。** `wpctl status` 用行首的 `*` 标记当前默认 sink，而旧的解析
+  逻辑不接受这个标记，于是恰好跳过了动画真正在用的那一路输出（预览按钮也就听不出效果）。
+- **修复：面板显示的「当前输出」是错的。** 之前显示第一个非 HDMI 的 sink，不一定是你在听的那个；
+  现在显示真正的默认输出及其音量（带设备名）。
+- **修复：社区启动动画没有被计入时长。** 之前只探测内置的 `steamui/movies`，点数商店里比内置更长的
+  动画（例如 10s 的动画对上 9.55s 的窗口）结尾会以满音量播完。现在会扫描社区缓存与
+  `uioverrides`，并把安全余量提高到 4 秒。
+- **新增：重启 Steam 时也会压低。** 原先压低挂在 Decky 自身启动上，「Restart Steam」往往不触发
+  （或者晚 40 秒才触发）。现在用一个小 watcher 监视 Steam UI 进程被替换，并立即压低。
 
 ### 1.2.0
 
-- Auto-detect the animation length from the startup movies
-- Preview button, QAM panel
+- 自动探测启动动画时长
+- 预览按钮、侧边栏面板
 
-## Credits
+## 致谢
 
-- Inspired by, and the backend layout derived from, [MuteOnSleep](https://github.com/genc-v/mute-on-sleep).
-- Based on the [Decky plugin template](https://github.com/SteamDeckHomebrew/decky-plugin-template).
+- 灵感来自同类插件 MuteOnSleep（睡眠静音），后端结构沿用了它的布局。
+- 基于 [Decky 插件模板](https://github.com/SteamDeckHomebrew/decky-plugin-template)。
 
-## License
+## 许可
 
-BSD-3-Clause. See [LICENSE](LICENSE).
+BSD-3-Clause，见 [LICENSE](LICENSE)。

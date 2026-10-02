@@ -1,6 +1,7 @@
 import { call, definePlugin } from "@decky/api";
 import {
   ButtonItem,
+  DropdownItem,
   PanelSection,
   PanelSectionRow,
   SliderField,
@@ -8,6 +9,7 @@ import {
 } from "@decky/ui";
 import { useEffect, useRef, useState } from "react";
 import { FaVolumeDown } from "react-icons/fa";
+import { Lang, LANGS, loadLang, saveLang, strings } from "./i18n";
 
 type Settings = {
   enabled: boolean;
@@ -19,6 +21,9 @@ type Settings = {
 };
 
 function BootVolumePanel() {
+  const [lang, setLang] = useState<Lang>(loadLang);
+  const t = strings[lang];
+
   const [enabled, setEnabled] = useState(true);
   const [animVolume, setAnimVolume] = useState(20);
   const [currentVolume, setCurrentVolume] = useState<number | null>(null);
@@ -57,11 +62,11 @@ function BootVolumePanel() {
   };
 
   return (
-    <PanelSection title="Boot animation volume">
+    <PanelSection title={t.sectionTitle}>
       <PanelSectionRow>
         <ToggleField
-          label="Enable"
-          description="Lower the system volume while Steam starts, then put it back. No system files are touched."
+          label={t.enableLabel}
+          description={t.enableDescription}
           checked={enabled}
           onChange={(val) => {
             setEnabled(val);
@@ -72,10 +77,11 @@ function BootVolumePanel() {
 
       <PanelSectionRow>
         <SliderField
-          label={`Volume during the animation: ${animVolume}%`}
-          description={`Current output: ${currentSink ?? "unknown"} — ${
+          label={t.volumeLabel(animVolume)}
+          description={t.volumeDescription(
+            currentSink ?? t.unknownOutput,
             currentVolume == null ? "?" : currentVolume + "%"
-          }. It is set to the value above while the animation plays, then restored.`}
+          )}
           value={animVolume}
           min={0}
           max={100}
@@ -87,9 +93,7 @@ function BootVolumePanel() {
 
       <PanelSectionRow>
         <div style={{ fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }}>
-          {`Animation length measured from the startup movies on disk: ${autoSeconds.toFixed(
-            1
-          )}s (includes a safety margin).`}
+          {t.durationNote(autoSeconds.toFixed(1))}
         </div>
       </PanelSectionRow>
 
@@ -114,7 +118,7 @@ function BootVolumePanel() {
               });
           }}
         >
-          {previewing ? "Playing the startup sound…" : "Preview the duck"}
+          {previewing ? t.previewBusy : t.previewIdle}
         </ButtonItem>
       </PanelSectionRow>
 
@@ -127,9 +131,21 @@ function BootVolumePanel() {
       )}
 
       <PanelSectionRow>
+        <DropdownItem
+          label={t.languageLabel}
+          rgOptions={LANGS}
+          selectedOption={lang}
+          onChange={(option) => {
+            const next = option.data as Lang;
+            setLang(next);
+            saveLang(next);
+          }}
+        />
+      </PanelSectionRow>
+
+      <PanelSectionRow>
         <div style={{ fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }}>
-          How it works: every audio output is temporarily set to the target volume, held for the
-          measured animation length, then restored to the value it had before.
+          {t.footer}
         </div>
       </PanelSectionRow>
     </PanelSection>

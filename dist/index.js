@@ -82,7 +82,70 @@ function FaVolumeDown (props) {
   return GenIcon({"attr":{"viewBox":"0 0 384 512"},"child":[{"tag":"path","attr":{"d":"M215.03 72.04L126.06 161H24c-13.26 0-24 10.74-24 24v144c0 13.25 10.74 24 24 24h102.06l88.97 88.95c15.03 15.03 40.97 4.47 40.97-16.97V89.02c0-21.47-25.96-31.98-40.97-16.98zm123.2 108.08c-11.58-6.33-26.19-2.16-32.61 9.45-6.39 11.61-2.16 26.2 9.45 32.61C327.98 229.28 336 242.62 336 257c0 14.38-8.02 27.72-20.92 34.81-11.61 6.41-15.84 21-9.45 32.61 6.43 11.66 21.05 15.8 32.61 9.45 28.23-15.55 45.77-45 45.77-76.88s-17.54-61.32-45.78-76.87z"},"child":[]}]})(props);
 }
 
+/**
+ * Tiny two-language dictionary for the plugin panel.
+ *
+ * Chinese is the default (as requested); the choice is remembered in
+ * localStorage under a plugin-private key. Everything is wrapped in
+ * try/catch because the Steam UI context can deny storage access.
+ */
+const STORAGE_KEY = "boot-volume.lang";
+const LANGS = [
+    { data: "zh", label: "中文" },
+    { data: "en", label: "English" },
+];
+function loadLang() {
+    try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        if (saved === "zh" || saved === "en") {
+            return saved;
+        }
+    }
+    catch {
+        /* storage unavailable — fall through to the default */
+    }
+    return "zh";
+}
+function saveLang(lang) {
+    try {
+        window.localStorage.setItem(STORAGE_KEY, lang);
+    }
+    catch {
+        /* ignore */
+    }
+}
+const strings = {
+    zh: {
+        sectionTitle: "开机动画音量",
+        languageLabel: "语言 / Language",
+        enableLabel: "启用",
+        enableDescription: "Steam 启动时压低系统音量，动画结束后还原。不会修改任何系统文件。",
+        volumeLabel: (volume) => `动画期间音量：${volume}%`,
+        volumeDescription: (output, current) => `当前输出：${output} — ${current}。动画播放期间会被设成上面的数值，结束后恢复原值。`,
+        unknownOutput: "未知设备",
+        durationNote: (seconds) => `按磁盘上实际安装的启动动画实测时长：${seconds}s（含安全余量）。`,
+        previewIdle: "预览压低效果",
+        previewBusy: "正在播放启动音效…",
+        footer: "原理：动画开始时把所有音频输出临时设为设定音量，保持实测到的动画时长，然后逐个恢复为动画前的数值。",
+    },
+    en: {
+        sectionTitle: "Boot animation volume",
+        languageLabel: "语言 / Language",
+        enableLabel: "Enable",
+        enableDescription: "Lower the system volume while Steam starts, then put it back. No system files are touched.",
+        volumeLabel: (volume) => `Volume during the animation: ${volume}%`,
+        volumeDescription: (output, current) => `Current output: ${output} — ${current}. It is set to the value above while the animation plays, then restored.`,
+        unknownOutput: "unknown",
+        durationNote: (seconds) => `Animation length measured from the startup movies on disk: ${seconds}s (includes a safety margin).`,
+        previewIdle: "Preview the duck",
+        previewBusy: "Playing the startup sound…",
+        footer: "How it works: every audio output is temporarily set to the target volume, held for the measured animation length, then restored to the value it had before.",
+    },
+};
+
 function BootVolumePanel() {
+    const [lang, setLang] = SP_REACT.useState(loadLang);
+    const t = strings[lang];
     const [enabled, setEnabled] = SP_REACT.useState(true);
     const [animVolume, setAnimVolume] = SP_REACT.useState(20);
     const [currentVolume, setCurrentVolume] = SP_REACT.useState(null);
@@ -117,10 +180,10 @@ function BootVolumePanel() {
             call("set_anim_volume", next).catch((e) => setError(String(e)));
         }, 200);
     };
-    return (SP_JSX.jsxs(DFL.PanelSection, { title: "Boot animation volume", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ToggleField, { label: "Enable", description: "Lower the system volume while Steam starts, then put it back. No system files are touched.", checked: enabled, onChange: (val) => {
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: t.sectionTitle, children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ToggleField, { label: t.enableLabel, description: t.enableDescription, checked: enabled, onChange: (val) => {
                         setEnabled(val);
                         call("set_enabled", val).catch((e) => setError(String(e)));
-                    } }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: `Volume during the animation: ${animVolume}%`, description: `Current output: ${currentSink ?? "unknown"} — ${currentVolume == null ? "?" : currentVolume + "%"}. It is set to the value above while the animation plays, then restored.`, value: animVolume, min: 0, max: 100, step: 1, disabled: !enabled, onChange: onAnimVolume }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }, children: `Animation length measured from the startup movies on disk: ${autoSeconds.toFixed(1)}s (includes a safety margin).` }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: !enabled || previewing, onClick: () => {
+                    } }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.SliderField, { label: t.volumeLabel(animVolume), description: t.volumeDescription(currentSink ?? t.unknownOutput, currentVolume == null ? "?" : currentVolume + "%"), value: animVolume, min: 0, max: 100, step: 1, disabled: !enabled, onChange: onAnimVolume }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }, children: t.durationNote(autoSeconds.toFixed(1)) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", disabled: !enabled || previewing, onClick: () => {
                         if (!enabled || previewing)
                             return;
                         setPreviewing(true);
@@ -136,7 +199,11 @@ function BootVolumePanel() {
                             setPreviewing(false);
                             setError(String(e));
                         });
-                    }, children: previewing ? "Playing the startup sound…" : "Preview the duck" }) }), error && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", color: "#ff8a8a", padding: "0 16px" }, children: error }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }, children: "How it works: every audio output is temporarily set to the target volume, held for the measured animation length, then restored to the value it had before." }) })] }));
+                    }, children: previewing ? t.previewBusy : t.previewIdle }) }), error && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", color: "#ff8a8a", padding: "0 16px" }, children: error }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.DropdownItem, { label: t.languageLabel, rgOptions: LANGS, selectedOption: lang, onChange: (option) => {
+                        const next = option.data;
+                        setLang(next);
+                        saveLang(next);
+                    } }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { style: { fontSize: "0.75rem", opacity: 0.7, padding: "0 16px" }, children: t.footer }) })] }));
 }
 var index = definePlugin(() => ({
     name: "BootVolume",

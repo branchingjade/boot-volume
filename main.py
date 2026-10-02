@@ -3,6 +3,7 @@ import json
 import os
 import pwd
 import re
+import time
 import decky
 
 SETTINGS_PATH = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
@@ -337,19 +338,32 @@ class Plugin:
         settings = load_settings()
         target = max(0, min(100, int(settings.get("anim_volume", 20))))
 
-        try:
-            seconds, details, ok = await detect_anim_duration()
-            self._anim_duration = seconds
-            decky.logger.info(f"duration source: auto={seconds:.2f}s detected={ok}")
-        except Exception as e:
-            seconds = DEFAULT_DUCK_SECONDS
-            decky.logger.warning(f"duration detect failed, fallback {seconds}s: {e}")
+        # Use the duration measured at load instead of re-probing on the hot
+        # path: the ffprobe scan delayed the duck by ~1s (much longer when the
+        # movie files are cold, e.g. right after a long sleep), which left the
+        # first seconds of the animation at full volume.
+        seconds = self._anim_duration
+        if seconds <= DEFAULT_DUCK_SECONDS:
+            try:
+                seconds, details, ok = await detect_anim_duration()
+                self._anim_duration = seconds
+                decky.logger.info(f"duration source: auto={seconds:.2f}s detected={ok}")
+            except Exception as e:
+                seconds = DEFAULT_DUCK_SECONDS
+                decky.logger.warning(f"duration detect failed, fallback {seconds}s: {e}")
 
-        try:
-            saved_map = await get_all_hw_volumes()
-        except Exception as e:
-            decky.logger.error(f"duck: cannot read volumes: {e}")
-            return
+        # Right after a resume the audio graph may not be up yet: retry briefly
+        # instead of giving up with "no hardware sinks found".
+        saved_map = {}
+        for attempt in range(6):
+            try:
+                saved_map = await get_all_hw_volumes()
+            except Exception as e:
+                decky.logger.error(f"duck: cannot read volumes: {e}")
+                saved_map = {}
+            if saved_map:
+                break
+            await asyncio.sleep(0.25)
 
         if not saved_map:
             decky.logger.error("duck: no hardware sinks found")
@@ -369,9 +383,39 @@ class Plugin:
                 await self._play_boot_sound()
                 await asyncio.sleep(0.3)
             else:
-                await asyncio.sleep(seconds)
+                # Hold the duck for the whole animation, and keep covering sinks
+                # that only show up mid-window: after a resume the USB/HDMI sinks
+                # are re-enumerated under new node names at full volume, so a
+                # one-shot duck at t=0 does not cover them.
+                deadline = time.time() + seconds
+                while True:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        break
+                    await asyncio.sleep(min(1.0, remaining))
+                    try:
+                        for sink_id, name, _d in await list_hw_sinks():
+                            if str(sink_id) in saved_map:
+                                continue
+                            # remember its pre-duck volume so the restore loop
+                            # below puts it back when the window ends
+                            try:
+                                prior = await get_hw_volume(sink_id)
+                            except Exception:
+                                prior = None
+                            saved_map[str(sink_id)] = {"desc": name, "volume": prior,
+                                                       "default": _d}
+                            await set_hw_volume(sink_id, target)
+                            decky.logger.info(
+                                f"duck ({reason}): new sink {sink_id} "
+                                f"{prior if prior is not None else '?'}% -> {target}%"
+                            )
+                    except Exception as e:
+                        decky.logger.warning(f"duck re-apply: {e}")
 
             for sink_id, info in saved_map.items():
+                if info.get("volume") is None:
+                    continue
                 now = await get_hw_volume(sink_id)
                 if now == target:
                     await set_hw_volume(sink_id, info["volume"])
@@ -421,9 +465,29 @@ class Plugin:
         """
         last_pid = None
         last_duck = 0.0
+        last_gap = time.time() - time.monotonic()
         loop = asyncio.get_event_loop()
         while True:
             try:
+                # Suspend/resume detection. CLOCK_REALTIME keeps running across
+                # suspend while CLOCK_MONOTONIC (which asyncio's loop clock uses)
+                # does not, so the difference jumps by the sleep duration on
+                # resume. The startup movie played on wake runs without the
+                # Steam UI pid changing, so watching the pid alone missed it,
+                # which is exactly why the *first* start after sleep stayed loud
+                # while later manual restarts were ducked fine.
+                gap = time.time() - time.monotonic()
+                if gap - last_gap > 5.0:
+                    decky.logger.info(
+                        f"resumed from sleep (clock gap +{gap - last_gap:.0f}s); ducking"
+                    )
+                    try:
+                        await self._start_duck(reason="resume")
+                    except Exception as e:
+                        decky.logger.error(f"resume duck failed: {e}")
+                    last_duck = loop.time()
+                last_gap = gap
+
                 pid = steamui_pid()
                 if pid is not None and pid != last_pid:
                     if last_pid is None:
